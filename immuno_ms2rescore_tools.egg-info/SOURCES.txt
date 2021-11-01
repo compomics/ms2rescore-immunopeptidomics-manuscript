@@ -1,0 +1,15 @@
+README.md
+setup.py
+immuno_ms2rescore_tools/__init__.py
+immuno_ms2rescore_tools/convert_model_to_C.py
+immuno_ms2rescore_tools/download_massive_project.py
+immuno_ms2rescore_tools/download_pride_project.py
+immuno_ms2rescore_tools/file_utilities.py
+immuno_ms2rescore_tools/id_file_parser.py
+immuno_ms2rescore_tools/spectral_library.py
+immuno_ms2rescore_tools.egg-info/PKG-INFO
+immuno_ms2rescore_tools.egg-info/SOURCES.txt
+immuno_ms2rescore_tools.egg-info/dependency_links.txt
+immuno_ms2rescore_tools.egg-info/entry_points.txt
+immuno_ms2rescore_tools.egg-info/requires.txt
+immuno_ms2rescore_tools.egg-info/top_level.txt
