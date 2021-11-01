@@ -9,9 +9,9 @@ All data used can be found and downloaded from Zenodo:
 
 ## images
 ALl manuscript images can be found in data/Figures.\
-MS²PIP model performances   | MS²Rescore feature contribution
+MS²PIP model performances   | MS²Rescore performance
 :--------------------------:|:--------------------------------:
-![MS²PIP model performances](https://github.com/compomics/ms2rescore-immunopeptidomics-manuscript/blob/main/notebooks/data/Figures/Figure1A.svg) | ![MS²Rescore feature contribution](https://github.com/compomics/ms2rescore-immunopeptidomics-manuscript/blob/main/notebooks/data/Figures/Figure3.svg)
+![MS²PIP model performances](https://github.com/compomics/ms2rescore-immunopeptidomics-manuscript/blob/main/notebooks/data/Figures/Figure1A.svg) | ![MS²Rescore performance](https://github.com/compomics/ms2rescore-immunopeptidomics-manuscript/blob/main/notebooks/data/Figures/Figure2.svg)
 
 ## Notebooks
 ### Model training notebooks
