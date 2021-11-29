@@ -54,12 +54,16 @@ class Spectrallibrary:
                 header=True,
                 mode="w",
             )
+        else:
+            self.mgf.scan_mgf(
+                self.df.peprec, spec_id_name="spec_id", outname="spec_lib_" + self.df.peprec_name + ".mgf"
+            )
 
 
 @click.command()
 @click.option("--peprec", help="peprec to create spectral library from")
 @click.option("--mgf_folder", help="mgf folder/file with concomitant spectra")
-@click.option("--identifier", default=False, help="Idenitifier for Universal Spectrum Identifier")
+@click.option("--identifier", default=None, help="Idenitifier for Universal Spectrum Identifier")
 def main(peprec, mgf_folder, identifier):
     spectral_lib = Spectrallibrary(peprec, mgf_folder)
     spectral_lib.create_spectral_library_from_pep(identifier)
