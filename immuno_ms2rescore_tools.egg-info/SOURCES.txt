@@ -6,6 +6,7 @@ immuno_ms2rescore_tools/download_massive_project.py
 immuno_ms2rescore_tools/download_pride_project.py
 immuno_ms2rescore_tools/file_utilities.py
 immuno_ms2rescore_tools/id_file_parser.py
+immuno_ms2rescore_tools/peprec_to_prosit_csv.py
 immuno_ms2rescore_tools/spectral_library.py
 immuno_ms2rescore_tools.egg-info/PKG-INFO
 immuno_ms2rescore_tools.egg-info/SOURCES.txt

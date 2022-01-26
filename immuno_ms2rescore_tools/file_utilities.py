@@ -348,3 +348,54 @@ class PeptideRecord(FileHandeling):
             self.peprec.to_csv(
                 filename + ".peprec", separator, index=False, header=False, mode="a"
             )
+
+    def to_prosit_csv(self, ce):
+        """Convert peprec to prosit csv for predicting spectral intensities with prosit"""
+
+        prosit_csv = pd.DataFrame()
+        prosit_csv["precursor_charge"] = self.peprec["charge"]
+        prosit_csv["collision_energy"] = ce
+        prosit_csv["modified_sequence"] = self.acquire_modified_seq()
+
+        return prosit_csv
+
+    @staticmethod
+    def _get_modified_sequence(sequence_mod_tuple):
+        """
+        Combine peptide sequence and peprec modification into modified sequence
+
+        input:
+        sequence_mod_tuple: tuple of seq and peprec style modification
+
+        output:
+        modified sequence
+        """
+        inverse_modification_map = {
+            "Oxidation" : "ox",
+            "Phospho" : "ph",
+            "Acetyl" : "ac",
+            "Carbamidomethyl" : "ca",
+            "Cysteinyl" : "cy",
+        }
+        seq, peprec_mod = sequence_mod_tuple
+        if peprec_mod == "-":
+            return seq
+
+        locations = peprec_mod.split("|")[::2]
+        modifications = peprec_mod.split("|")[1::2]
+
+        for i,(loc, mod) in enumerate(zip(locations, modifications)):
+            if loc == "-1":
+                seq += f"({inverse_modification_map[mod]})"
+
+            seq = seq[:int(loc)+ i*4 ] + f"({inverse_modification_map[mod]})" + seq[int(loc) + i*4:]
+
+        return seq
+
+    def acquire_modified_seq(self):
+        """Combine peptide and modifications column of peprec to modified sequences"""
+
+        loc_mod_tuples = pd.Series(zip(self.peprec["peptide"], self.peprec["modifications"]))
+        modified_sequences = loc_mod_tuples.apply(self._get_modified_sequence)
+
+        return modified_sequences
