@@ -1,10 +1,13 @@
 """utilities for handeling different filetypes"""
 
+from math import log2
 from os.path import isdir
 from re import escape
 from numpy.core.numeric import full
 import pandas as pd
+import numpy as np
 import os
+from sqlalchemy import true
 from tqdm import tqdm
 from pyteomics.auxiliary import target_decoy
 import re
@@ -50,6 +53,10 @@ class FileHandeling:
         peprec = pd.concat(peprecs, ignore_index=True, join="inner")
         return peprec
 
+    @staticmethod
+    def _calculate_log2_intensity(intensity):
+        """calculate the log2 instensity"""
+        return log2(intensity + 0.001)
 
 class MascotGenericFormat(FileHandeling):
     """Methods for MGF files"""
@@ -58,7 +65,12 @@ class MascotGenericFormat(FileHandeling):
         super().__init__()
         self.retrieve_files(mgf_folder, file_extension="mgf")
 
-    def count_spectra(self, verbose=True):
+    def count_spectra(self) -> pd.DataFrame:
+        """Get spectra count from mgf files"""
+        counts = {
+            "raw file": [],
+            "spectra" : []
+        }
         if not self.filelist:
             print("No files listed")
 
@@ -69,11 +81,14 @@ class MascotGenericFormat(FileHandeling):
                 for line in f:
                     if line.rstrip("\n") == "BEGIN IONS":
                         count += 1
-            filename = mgf_file_path.rsplit("/", 1)[1]
+            filename = mgf_file_path.rsplit("/", 1)[1].rsplit(".",1)[0]
             total += count
-            if verbose:
-                print(f"{filename}: {count}")
-        print(f"Total spectra: {total}")
+            counts["raw file"].append(filename)
+            counts["spectra"].append(count)
+        counts["raw file"].append("total")
+        counts["spectra"].append(total)
+
+        return pd.DataFrame(counts)
 
     def get_spec_id(self):
         spec_list = []
@@ -353,6 +368,7 @@ class PeptideRecord(FileHandeling):
         """Convert peprec to prosit csv for predicting spectral intensities with prosit"""
 
         prosit_csv = pd.DataFrame()
+        prosit_csv["spec_id"] = self.peprec["spec_id"]
         prosit_csv["precursor_charge"] = self.peprec["charge"]
         prosit_csv["collision_energy"] = ce
         prosit_csv["modified_sequence"] = self.acquire_modified_seq()
@@ -384,11 +400,15 @@ class PeptideRecord(FileHandeling):
         locations = peprec_mod.split("|")[::2]
         modifications = peprec_mod.split("|")[1::2]
 
-        for i,(loc, mod) in enumerate(zip(locations, modifications)):
+        added_modifications = 0
+        for loc, mod in zip(locations, modifications):
             if loc == "-1":
                 seq += f"({inverse_modification_map[mod]})"
-
-            seq = seq[:int(loc)+ i*4 ] + f"({inverse_modification_map[mod]})" + seq[int(loc) + i*4:]
+            if mod == "Carbamidomethyl":
+                continue
+            else:
+                seq = seq[:int(loc)+ added_modifications*4 ] + f"({inverse_modification_map[mod]})" + seq[int(loc) + added_modifications*4:]
+                added_modifications += 1
 
         return seq
 
@@ -399,3 +419,71 @@ class PeptideRecord(FileHandeling):
         modified_sequences = loc_mod_tuples.apply(self._get_modified_sequence)
 
         return modified_sequences
+
+
+class PrositLib(FileHandeling):
+    """Methods for peprec files"""
+
+    def __init__(self, myprositlib) -> None:
+        super().__init__()
+        if isinstance(myprositlib, str):
+            self.prositlib = pd.read_csv(myprositlib)
+        elif isinstance(myprositlib, pd.DataFrame):
+            self.prositlib = myprositlib
+
+    def remove_carbamidomethyl(self):
+        """Remove carbamidomethylated prosit peptides"""
+
+        self.prositlib = self.prositlib[
+            ~(self.prositlib["ModifiedPeptide"].str.contains("[Carbamidomethyl (C)]"))
+        ]
+
+    def _replace_modified_seq(self):
+        """Replace prosit modifications to original maxquant modfications"""
+
+        self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.replace("[Carbamidomethyl (C)]", "(ca)", regex=False)
+        self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.replace("[Oxidation (O)]", "(ox)", regex=False)
+        self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.extract(r"_([A-Z]*)_")
+
+    def merge_spec_ids(self, prosit_csv):
+        """merge prositlib with concomitant prosit csv on modified peptide & charge"""
+
+        self._replace_modified_seq()
+        prosit_csv_df = pd.read_csv(prosit_csv)[["spec_id","precursor_charge", "modified_sequence"]]
+        prosit_csv_df.rename(
+            {"precursor_charge": "PrecursorCharge", "modified_sequence": "ModifiedPeptide"},
+            axis=1,
+            inplace=True
+        )
+        self.prositlib = self.prositlib.merge(
+            prosit_csv_df,
+            on=["ModifiedPeptide", "PrecursorCharge"],
+            how="inner"
+        )
+
+    def create_pred_and_emp_csv(self, ms2pip_pred_and_emp_csv) -> pd.DataFrame:
+        """
+        Create dataframe similar to pred_and_emp output of ms2pip
+
+        input:
+        ms2pip_pred_and_emp_csv: concomitant ms2pip_pred_and_emp_csv file with same spec_ids
+
+        output:
+        pred_and_emp_csv like dataframe with prosit predictions
+        """
+
+        pred_emp_csv = pd.read_csv(ms2pip_pred_and_emp_csv)[["spec_id", "charge", "ion", "ionnumber", "mz", "target"]]
+        prosit_pred_emp = self.prositlib[["spec_id","RelativeIntensity", "FragmentMz","PrecursorCharge","FragmentNumber","FragmentType" ]].copy()
+        prosit_pred_emp.rename({"RelativeIntensity": "prediction","PrecursorCharge": "charge","FragmentType": "ion", "FragmentNumber": "ionnumber"}, axis=1, inplace=True)
+        prosit_pred_emp["ion"] = prosit_pred_emp["ion"].str.upper()
+        prosit_pred_emp["charge"] = prosit_pred_emp["charge"].astype(np.int64)
+        pred_emp_csv = pred_emp_csv[pred_emp_csv["spec_id"].isin(prosit_pred_emp["spec_id"])]
+
+        prosit_pred_emp = prosit_pred_emp.merge(pred_emp_csv, on=["spec_id", "ion", "ionnumber", "charge"], how="right")
+        prosit_pred_emp["FragmentMz"] = prosit_pred_emp["FragmentMz"].fillna(prosit_pred_emp["mz"])
+        prosit_pred_emp["prediction"].fillna(0, inplace=True)
+        prosit_pred_emp["prediction"] = prosit_pred_emp["prediction"].apply(self._calculate_log2_intensity)
+
+        prosit_pred_emp = prosit_pred_emp[abs((prosit_pred_emp["FragmentMz"] - prosit_pred_emp["mz"])) < 1]
+
+        return prosit_pred_emp
