@@ -461,6 +461,11 @@ class PrositLib(FileHandeling):
             how="inner"
         )
 
+    def remove_non_single_charge_fragments(self):
+        """Remove all multiple charged fragment ions"""
+
+        self.prositlib = self.prositlib[self.prositlib["FragmentCharge"] == 1]
+
     def create_pred_and_emp_csv(self, ms2pip_pred_and_emp_csv) -> pd.DataFrame:
         """
         Create dataframe similar to pred_and_emp output of ms2pip
@@ -480,10 +485,8 @@ class PrositLib(FileHandeling):
         pred_emp_csv = pred_emp_csv[pred_emp_csv["spec_id"].isin(prosit_pred_emp["spec_id"])]
 
         prosit_pred_emp = prosit_pred_emp.merge(pred_emp_csv, on=["spec_id", "ion", "ionnumber", "charge"], how="right")
-        prosit_pred_emp["FragmentMz"] = prosit_pred_emp["FragmentMz"].fillna(prosit_pred_emp["mz"])
+        prosit_pred_emp["FragmentMz"] = prosit_pred_emp["FragmentMz"].fillna(0)
         prosit_pred_emp["prediction"].fillna(0, inplace=True)
         prosit_pred_emp["prediction"] = prosit_pred_emp["prediction"].apply(self._calculate_log2_intensity)
-
-        prosit_pred_emp = prosit_pred_emp[abs((prosit_pred_emp["FragmentMz"] - prosit_pred_emp["mz"])) < 1]
 
         return prosit_pred_emp
