@@ -435,7 +435,7 @@ class PrositLib(FileHandeling):
         """Remove carbamidomethylated prosit peptides"""
 
         self.prositlib = self.prositlib[
-            ~(self.prositlib["ModifiedPeptide"].str.contains("[Carbamidomethyl (C)]"))
+            ~(self.prositlib["ModifiedPeptide"].str.contains("[Carbamidomethyl (C)]", regex=False))
         ]
 
     def _replace_modified_seq(self):
@@ -443,7 +443,7 @@ class PrositLib(FileHandeling):
 
         self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.replace("[Carbamidomethyl (C)]", "(ca)", regex=False)
         self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.replace("[Oxidation (O)]", "(ox)", regex=False)
-        self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.extract(r"_([A-Z]*)_")
+        self.prositlib["ModifiedPeptide"] = self.prositlib["ModifiedPeptide"].str.extract(r"_([A-Za-z\(\)]*)_")
 
     def merge_spec_ids(self, prosit_csv):
         """merge prositlib with concomitant prosit csv on modified peptide & charge"""
@@ -455,16 +455,13 @@ class PrositLib(FileHandeling):
             axis=1,
             inplace=True
         )
-        self.prositlib = self.prositlib.merge(
+        self.prositlib = pd.merge(
+            self.prositlib,
             prosit_csv_df,
             on=["ModifiedPeptide", "PrecursorCharge"],
-            how="inner"
+            how="inner",
+            validate="many_to_one"
         )
-
-    def remove_non_single_charge_fragments(self):
-        """Remove all multiple charged fragment ions"""
-
-        self.prositlib = self.prositlib[self.prositlib["FragmentCharge"] == 1]
 
     def create_pred_and_emp_csv(self, ms2pip_pred_and_emp_csv) -> pd.DataFrame:
         """
@@ -478,8 +475,9 @@ class PrositLib(FileHandeling):
         """
 
         pred_emp_csv = pd.read_csv(ms2pip_pred_and_emp_csv)[["spec_id", "charge", "ion", "ionnumber", "mz", "target"]]
-        prosit_pred_emp = self.prositlib[["spec_id","RelativeIntensity", "FragmentMz","PrecursorCharge","FragmentNumber","FragmentType" ]].copy()
+        prosit_pred_emp = self.prositlib[["spec_id","RelativeIntensity", "FragmentMz","PrecursorCharge","FragmentNumber","FragmentType", "FragmentCharge" ]].copy()
         prosit_pred_emp.rename({"RelativeIntensity": "prediction","PrecursorCharge": "charge","FragmentType": "ion", "FragmentNumber": "ionnumber"}, axis=1, inplace=True)
+        prosit_pred_emp = prosit_pred_emp[prosit_pred_emp["FragmentCharge"] == 1]
         prosit_pred_emp["ion"] = prosit_pred_emp["ion"].str.upper()
         prosit_pred_emp["charge"] = prosit_pred_emp["charge"].astype(np.int64)
         pred_emp_csv = pred_emp_csv[pred_emp_csv["spec_id"].isin(prosit_pred_emp["spec_id"])]
