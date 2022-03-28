@@ -1,16 +1,15 @@
 """utilities for handeling different filetypes"""
 
-from math import log2
-from os.path import isdir
-from re import escape
-from numpy.core.numeric import full
+import re
+import os
+from math import log2, sqrt, acos
+from scipy.stats import 
 import pandas as pd
 import numpy as np
-import os
+
 from sqlalchemy import true
 from tqdm import tqdm
 from pyteomics.auxiliary import target_decoy
-import re
 from pyteomics import mgf
 
 
@@ -57,6 +56,39 @@ class FileHandeling:
     def _calculate_log2_intensity(intensity):
         """calculate the log2 instensity"""
         return log2(intensity + 0.001)
+    
+    @staticmethod
+    def ms2pip_pearson(true, pred):
+        """
+        Return pearson of tic-normalized, log-transformed intensities, 
+        the MS2PIP way.
+        """
+        #tic_norm = lambda x: x / np.sum(x)
+        # log_transform = lambda x: np.log2(x + 0.001)
+        corr = pearsonr(
+            true, 
+            pred
+        )[0]
+        return corr
+
+    @staticmethod
+    def spectral_angle(true, pred, epsilon=1e-7):
+        """
+        Return square root normalized spectral angle.
+        See https://doi.org/10.1074/mcp.O113.036475
+        """
+        true = np.array(true)
+        pred = np.array(pred)
+
+        de_log = lambda x: (2**x)-0.001
+        l2_normalize = lambda x: x / sqrt(max(sum(x**2), epsilon))
+        
+        pred_norm = l2_normalize(de_log(pred))
+        true_norm = l2_normalize(de_log(true))
+        
+        spectral_angle = 1 - (2 * acos(np.dot(pred_norm, true_norm)) / np.pi)
+
+        return spectral_angle
 
 class MascotGenericFormat(FileHandeling):
     """Methods for MGF files"""
@@ -463,7 +495,7 @@ class PrositLib(FileHandeling):
             validate="many_to_one"
         )
 
-    def create_pred_and_emp_csv(self, ms2pip_pred_and_emp_csv) -> pd.DataFrame:
+    def create_pred_and_emp_csv(self, ms2pip_pred_and_emp_csv):
         """
         Create dataframe similar to pred_and_emp output of ms2pip
 
@@ -475,16 +507,38 @@ class PrositLib(FileHandeling):
         """
 
         pred_emp_csv = pd.read_csv(ms2pip_pred_and_emp_csv)[["spec_id", "charge", "ion", "ionnumber", "mz", "target"]]
-        prosit_pred_emp = self.prositlib[["spec_id","RelativeIntensity", "FragmentMz","PrecursorCharge","FragmentNumber","FragmentType", "FragmentCharge" ]].copy()
+        prosit_pred_emp = self.prositlib[["spec_id","RelativeIntensity", "FragmentMz","PrecursorCharge","FragmentNumber","FragmentType", "FragmentCharge"]].copy()
         prosit_pred_emp.rename({"RelativeIntensity": "prediction","PrecursorCharge": "charge","FragmentType": "ion", "FragmentNumber": "ionnumber"}, axis=1, inplace=True)
         prosit_pred_emp = prosit_pred_emp[prosit_pred_emp["FragmentCharge"] == 1]
         prosit_pred_emp["ion"] = prosit_pred_emp["ion"].str.upper()
         prosit_pred_emp["charge"] = prosit_pred_emp["charge"].astype(np.int64)
-        pred_emp_csv = pred_emp_csv[pred_emp_csv["spec_id"].isin(prosit_pred_emp["spec_id"])]
 
         prosit_pred_emp = prosit_pred_emp.merge(pred_emp_csv, on=["spec_id", "ion", "ionnumber", "charge"], how="right")
-        prosit_pred_emp["FragmentMz"] = prosit_pred_emp["FragmentMz"].fillna(0)
+        prosit_pred_emp["FragmentMz"].fillna(prosit_pred_emp["mz"], inplace=True)
         prosit_pred_emp["prediction"].fillna(0, inplace=True)
+        prosit_pred_emp["ce"] = self._parse_ce_value()
         prosit_pred_emp["prediction"] = prosit_pred_emp["prediction"].apply(self._calculate_log2_intensity)
+        prosit_pred_emp.sort_values(by="spec_id", ascending=True, inplace=True)
 
-        return prosit_pred_emp
+        prosit_pred_emp.to_csv(
+            (self.filename.parent / (self.filename.stem + f"_pred_and_emp")).with_suffix(".csv"),
+            index=False,
+            header=True
+        )
+    
+    def _parse_ce_value(self):
+        """Parse ce value from filename"""
+
+        ce = int(re.search(r'ce([0-9]{2})',self.filename.stem).group(1))
+
+        return ce
+
+    def join_spec_ids(self, idmapping):
+        """Merge the idmapping dataframe with spec_ids"""
+        
+        if any(self.prositlib["ModifiedPeptide"].str.contains("_")):
+            self._replace_modified_seq()
+        
+        self.prositlib["pep_id"] = self.prositlib["ModifiedPeptide"] + "/" + self.prositlib["PrecursorCharge"].astype(str)
+        id_map_df = pd.read_csv(idmapping)
+        self.prositlib = self.prositlib.merge(id_map_df, on="pep_id", how="inner", validate="m:1").reset_index(drop=True)
