@@ -1,5 +1,3 @@
-from email import header
-import pandas as pd
 import click
 
 from immuno_ms2rescore_tools import file_utilities
