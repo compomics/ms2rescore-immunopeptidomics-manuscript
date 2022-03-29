@@ -3,7 +3,7 @@
 import re
 import os
 from math import log2, sqrt, acos
-from scipy.stats import 
+from scipy.stats import pearsonr
 import pandas as pd
 import numpy as np
 
@@ -542,3 +542,22 @@ class PrositLib(FileHandeling):
         self.prositlib["pep_id"] = self.prositlib["ModifiedPeptide"] + "/" + self.prositlib["PrecursorCharge"].astype(str)
         id_map_df = pd.read_csv(idmapping)
         self.prositlib = self.prositlib.merge(id_map_df, on="pep_id", how="inner", validate="m:1").reset_index(drop=True)
+    
+    def _group_predictions(self, grouping_factors:list):
+        """ Group the predictions for each spectrum ID """
+
+        prediction_df = self.prositlib.groupby(by=grouping_factors).agg({"prediction": list, "target": list}).reset_index()
+        prediction_df["length"] = prediction_df["prediction"].apply(len)
+        prediction_df = prediction_df[prediction_df["length"] > 2]
+
+        return prediction_df.drop("length", axis=1)
+        
+
+    def calculate_prediction_correlation(self):
+        """Calculate pearson correlation and spectral angle for targets and predictions"""
+
+        prediction_df = self._group_predictions(["spec_id", "ce", "ion"])
+        prediction_df["PCC"] = prediction_df.apply(lambda x: self.ms2pip_pearson(x.target, x.prediction), axis=1)
+        prediction_df["SA"] = prediction_df.apply(lambda x: self.spectral_angle(x.target, x.prediction), axis=1)
+
+        return prediction_df
