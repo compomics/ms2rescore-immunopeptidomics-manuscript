@@ -553,10 +553,10 @@ class PrositLib(FileHandeling):
         return prediction_df.drop("length", axis=1)
         
 
-    def calculate_prediction_correlation(self):
+    def calculate_prediction_correlation(self, grouping_factors:list):
         """Calculate pearson correlation and spectral angle for targets and predictions"""
 
-        prediction_df = self._group_predictions(["spec_id", "ce", "ion"])
+        prediction_df = self._group_predictions(grouping_factors)
         prediction_df["PCC"] = prediction_df.apply(lambda x: self.ms2pip_pearson(x.target, x.prediction), axis=1)
         prediction_df["SA"] = prediction_df.apply(lambda x: self.spectral_angle(x.target, x.prediction), axis=1)
 
