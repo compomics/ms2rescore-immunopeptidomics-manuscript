@@ -1,6 +1,13 @@
 
 # Others
-notebooks/data/
+notebooks/data/collision_energy_data
+notebooks/data/evaluation_data
+notebooks/data/ms2pip_models
+notebooks/data/Prosit_comparison
+notebooks/data/PXD015408
+notebooks/data/PXD021398
+notebooks/data/training_data
+
 steps.txt
 old_files/
 prepare_pin_files.py
